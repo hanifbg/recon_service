@@ -32,62 +32,89 @@ type ReconciliationSummary struct {
 	TotalDiscrepancies          float64
 }
 
-func main() {
-	filePath := "system_transactions.csv"
+func transcationParse(filePath string) ([]Transaction, error) {
 	transactionsFile, err := os.Open(filePath)
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 	defer transactionsFile.Close()
 
 	var transactions []Transaction
 	if err = gocsv.UnmarshalFile(transactionsFile, &transactions); err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 
 	transactions[0].TransactionTime, err = time.Parse("2006-01-02 15:04:05", transactions[0].TransactionTimeStr)
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 
-	fmt.Println(transactions)
+	return transactions, nil
+}
 
-	filePath = "bank_statements.csv"
+func statementsParse(filePath string) ([]BankStatement, error) {
 	statementsFile, err := os.Open(filePath)
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 	defer statementsFile.Close()
 
 	var statements []BankStatement
 	if err = gocsv.UnmarshalFile(statementsFile, &statements); err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 
 	statements[0].Date, err = time.Parse("2006-01-02 15:04:05", statements[0].DateStr)
 	if err != nil {
+		return nil, err
+	}
+
+	return statements, nil
+}
+
+func main() {
+	trxFilePath := "system_transactions.csv"
+	bankFilePath := "bank_statements.csv"
+
+	transactions, err := transcationParse(trxFilePath)
+	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println(statements)
+	statements, err := statementsParse(bankFilePath)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	//recon
 	startDate := "2023-01-01"
 	endDate := "2023-12-31"
-	summary := ReconciliationSummary{}
-
 	start, _ := time.Parse("2006-01-02", startDate)
 	end, _ := time.Parse("2006-01-02", endDate)
+
+	summary := reconcileTransactions(transactions, statements, start, end)
+
+	fmt.Printf("Total Transactions Processed: %d\n", summary.TotalTransactionsProcessed)
+	fmt.Printf("Total Matched Transactions: %d\n", summary.TotalMatchedTransactions)
+	fmt.Printf("Total Unmatched Transactions: %d\n", summary.TotalUnmatchedTransactions)
+	fmt.Printf("Unmatched System Transactions: %v\n", summary.UnmatchedSystemTransactions)
+	fmt.Printf("Unmatched Bank Statements: %v\n", summary.UnmatchedBankStatements)
+	fmt.Printf("Total Discrepancies: %f\n", summary.TotalDiscrepancies)
+}
+
+func reconcileTransactions(transactions []Transaction, statements []BankStatement, startDate, endDate time.Time) ReconciliationSummary {
+
+	summary := ReconciliationSummary{}
+
 	// Filter transactions and statements by date range
 	var filteredTransactions []Transaction
 	var filteredBankStatements []BankStatement
 	for _, t := range transactions {
-		if t.TransactionTime.After(start) && t.TransactionTime.Before(end) {
+		if t.TransactionTime.After(startDate) && t.TransactionTime.Before(endDate) {
 			filteredTransactions = append(filteredTransactions, t)
 		}
 	}
 	for _, b := range statements {
-		if b.Date.After(start) && b.Date.Before(end) {
+		if b.Date.After(startDate) && b.Date.Before(endDate) {
 			filteredBankStatements = append(filteredBankStatements, b)
 		}
 	}
@@ -139,12 +166,7 @@ func main() {
 
 	summary.TotalUnmatchedTransactions = len(summary.UnmatchedSystemTransactions) + len(summary.UnmatchedBankStatements)
 
-	fmt.Printf("Total Transactions Processed: %d\n", summary.TotalTransactionsProcessed)
-	fmt.Printf("Total Matched Transactions: %d\n", summary.TotalMatchedTransactions)
-	fmt.Printf("Total Unmatched Transactions: %d\n", summary.TotalUnmatchedTransactions)
-	fmt.Printf("Unmatched System Transactions: %v\n", summary.UnmatchedSystemTransactions)
-	fmt.Printf("Unmatched Bank Statements: %v\n", summary.UnmatchedBankStatements)
-	fmt.Printf("Total Discrepancies: %f\n", summary.TotalDiscrepancies)
+	return summary
 }
 
 func abs(a float64) float64 {
